@@ -9,6 +9,13 @@ from datetime import datetime
 from time import sleep
 from random import randint
 
+CYCLES = 1000
+MIN_SIZE=20000
+MAX_SIZE=600000
+MAX_OBJECTS=512
+LIFETIME=2
+NWORKERS=8
+
 class Redis:
     def __init__(self):
         self.r = redis.StrictRedis(host="localhost")
@@ -40,12 +47,6 @@ def create_db(db_type):
     return db
 
 def do_actually_test(db, stats):
-    CYCLES = 25000
-    MIN_SIZE=20000
-    MAX_SIZE=600000
-    MAX_OBJECTS=512
-    LIFETIME=2
-
     stream = open("/dev/zero")
 
     def get_string(id):
@@ -54,6 +55,7 @@ def do_actually_test(db, stats):
         return str(s)
 
     for i in range(CYCLES):
+        stats[3] += 1
         id = str(randint(1,MAX_OBJECTS))
         x = db.get(id)
         if not x:
@@ -68,32 +70,36 @@ def do_actually_test(db, stats):
 def process(db_type, stats):
     db = create_db(db_type)
 
-    start = datetime.now()
     do_actually_test(db, stats)
-    delta = datetime.now() - start
-
-    stats[2] += float((delta.seconds * 100) + (delta.microseconds / 10000))
 
     return
     
 def run_processes(n, db_type):
-    a = Array('f', 3)
+    stats = Array('f', [0.0, 0.0, 0.0, 0.0])
+
+    start = datetime.now()
 
     for i in range(n):
-       p = Process(target=process, args=(db_type, a))
+       p = Process(target=process, args=(db_type, stats))
        p.start()
 
     while active_children():
         sleep(1)
 
-    return a
+    delta = datetime.now() - start
+    stats[2] = float((delta.seconds * 100) + (delta.microseconds / 10000))
+
+    return stats
 
 def run_threaded(n, db_type):
-    stats = [0.0, 0.0, 0,0]
+    stats = [0.0, 0.0, 0,0, 0.0]
     threads = []
+
+    start = datetime.now()
 
     for i in range(n):
         t = Thread(target=process, args=(db_type, stats))
+        t.daemon = True
         t.start()
         threads.append(t)
 
@@ -107,20 +113,25 @@ def run_threaded(n, db_type):
         else:
             sleep(1)
 
+    delta = datetime.now() - start
+    stats[2] = float((delta.seconds * 100) + (delta.microseconds / 10000))
+
     return stats
         
 def run_single(db_type):
-    from array import array
-    stats = [0.0, 0.0, 0,0]
+    stats = [0.0, 0.0, 0,0, 0.0]
+    start = datetime.now()
 
     process(db_type, stats)
+
+    delta = datetime.now() - start
+    stats[2] = float((delta.seconds * 100) + (delta.microseconds / 10000))
 
     return stats
 
 def run_tests(method, db_type):
-    NWORKERS = 16
-
     print "Running", method, "test using", db_type
+#    print "S:", datetime.now()
 
     create_db(db_type).flushall()
 
@@ -133,7 +144,9 @@ def run_tests(method, db_type):
     else:
         raise NotImplemented
 
-    print "Statistics: reads:", stats[0], "writes:", stats[1], "cache hit:", (stats[0]/(stats[0]+stats[1])), "time taken:", stats[2]/100
+#    print "E:", datetime.now()
+
+    print "Statistics:", int(stats[0]+stats[1]), ", reads:", int(stats[0]), ", writes:", int(stats[1]), ", cache hit: %0.2f %%, " % (stats[0]/(stats[0]+stats[1])), "time taken:", stats[2]/100, ">>", stats[3]
 
 if __name__ == '__main__':
     for method in ["single", "processes", "threaded"]:
