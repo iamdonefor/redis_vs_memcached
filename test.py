@@ -40,7 +40,7 @@ def create_db(db_type):
     return db
 
 def do_actually_test(db, stats):
-    CYCLES = 250
+    CYCLES = 25000
     MIN_SIZE=20000
     MAX_SIZE=600000
     MAX_OBJECTS=512
@@ -136,7 +136,7 @@ def run_tests(method, db_type):
     print "Statistics: reads:", stats[0], "writes:", stats[1], "cache hit:", (stats[0]/(stats[0]+stats[1])), "time taken:", stats[2]/100
 
 if __name__ == '__main__':
-    for method in ["single", "processes", "memcached"]:
+    for method in ["single", "processes", "threaded"]:
         for db_type in ["redis", "memcached"]:
             run_tests(method, db_type)
     
